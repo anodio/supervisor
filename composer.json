@@ -1,0 +1,12 @@
+{
+    "name": "anodio/supervisor",
+    "description": "Supervisor for Anodio",
+    "autoload": {
+        "psr-4": {
+            "Anodio\\Supervisor\\": "src/"
+        }
+    },
+    "require": {
+        "guzzlehttp/guzzle": "^7.9"
+    }
+}

@@ -1,0 +1,227 @@
+<?php
+
+namespace Anodio\Supervisor\Servers;
+
+use Anodio\Supervisor\Configs\SupervisorConfig;
+use Anodio\Supervisor\SignalControl\SignalController;
+use Anodio\Supervisor\Workers\WorkerManager;
+use DI\Attribute\Inject;
+use Swow\Buffer;
+use Swow\Channel;
+use Swow\Coroutine;
+use Swow\Psr7\Server\Server;
+use Swow\Psr7\Server\ServerConnection;
+use Swow\Socket;
+use Swow\SocketException;
+use Symfony\Component\HttpClient\Exception\ClientException;
+
+class HttpProxyServer
+{
+    private ?\SplFixedArray $pool = null;
+
+    #[Inject]
+    public SupervisorConfig $config;
+
+    private int $lastCalledWorker = 0;
+
+    protected function createServer(): Server
+    {
+        $host = '0.0.0.0';
+        $port = 8080;
+        $bindFlag = Socket::BIND_FLAG_NONE;
+
+        $server = new Server(Socket::TYPE_TCP);
+        $server->bind($host, $port, $bindFlag)->listen();
+        echo json_encode(['msg' => 'Http server starting at ' . $host . ':' . $port]) . PHP_EOL;
+        return $server;
+    }
+
+    private function createControlTCPServer(): Channel
+    {
+        $controlChannel = new Channel();
+        Coroutine::run(function () use ($controlChannel) {
+            $server = new Socket(Socket::TYPE_TCP);
+            $server->bind('0.0.0.0', 7080)->listen();
+            while (true) {
+                $connection = $server->accept();
+                echo "No.{$connection->getFd()} established" . PHP_EOL;
+                $buffer = new Buffer(Buffer::COMMON_SIZE);
+                try {
+                    while (true) {
+                        $length = $connection->recv($buffer);
+                        if ($length === 0) {
+                            break;
+                        }
+                        $message = $buffer->read(length: $length);
+                        echo "No.{$connection->getFd()} say: \"" . addcslashes($message, "\r\n") . '"' . PHP_EOL;
+                        $controlChannel->push(json_decode($message, true));
+                    }
+                    echo "No.{$connection->getFd()} closed" . PHP_EOL;
+                } catch (SocketException $exception) {
+                    echo "No.{$connection->getFd()} goaway! {$exception->getMessage()}" . PHP_EOL;
+                }
+            }
+        });
+        return $controlChannel;
+    }
+
+    private function runControl()
+    {
+        Coroutine::run(function () {
+            $channel = $this->createControlTCPServer();
+            while (true) {
+                $message = $channel->pop();
+                if ($message['command'] === 'lockWorker') {
+                    $this->pool[$message['workerNumber']]['locked'] = true;
+                    continue;
+                }
+                if ($message['command'] === 'unlockWorker') {
+                    $this->pool[$message['workerNumber']]['locked'] = false;
+                    continue;
+                }
+                if ($message['command'] === 'stop') {
+                    echo json_encode(['msg' => 'Got Server stop signal. Http server stopping']) . PHP_EOL;
+                    SignalController::getInstance()->sendExitSignal(0);
+                    break;
+                }
+            }
+        });
+    }
+
+    /**
+     * This method checks if port is already opened or not yet
+     * 40 times with 0.25s sleep between each check
+     * if still not opened - throw an exception
+     * @param $workerNumber
+     * @return bool
+     * @throws \Exception
+     */
+    private function checkIfWorkerIsReady($workerNumber): bool
+    {
+        $port = $workerNumber + 7080;
+        $tries = 0;
+        while ($tries < 40) {
+            $connection = @fsockopen('0.0.0.0', $port);
+            if (is_resource($connection)) {
+                fclose($connection);
+                return true;
+            }
+            $tries++;
+            usleep(250000);
+        }
+        throw new \Exception('Alarm, DEV Worker is not ready. Port: ' . $port . ' is not opened');
+    }
+
+    public function run(): bool
+    {
+        if ($this->config->devMode) {
+            $startWorkerCount = 0;
+        } else {
+            $startWorkerCount = $this->config->workerCount;
+        }
+
+        $workerManager = new WorkerManager();
+        if ($this->config->devMode) {
+            echo json_encode(['msg' => 'Http server in dev worker mode']) . PHP_EOL;
+        } else {
+            echo json_encode(['msg' => 'Http server in static pool worker mode']) . PHP_EOL;
+            for ($i = 0; $i < $startWorkerCount; $i++) {
+                $this->pool[$i] = [
+                    'locked' => false,
+                    'port' => 8081 + $i,
+                ];
+            }
+        }
+        $this->runControl();
+        $server = $this->createServer();
+        while (true) {
+            try {
+                $connection = null;
+                $connection = $server->acceptConnection();
+                // now lets resend this psr7 request to worker via guzzle
+                Coroutine::run(function (ServerConnection $connection) use ($workerManager) {
+                    $request = $connection->recvHttpRequest();
+                    if ($this->config->devMode) {
+                        $workerNumber = $this->createOneTimeWorker($workerManager);
+                    } else {
+                        $workerNumber = $this->getNextWorkerNumber();
+                    }
+                    $client = new \GuzzleHttp\Client();
+                    $this->checkIfWorkerIsReady($workerNumber);
+                    $workerPort = $workerNumber + 8080;
+                    //separate requests to queries with bodies and without them
+                    $uri = 'http://0.0.0.0:' . $workerPort . $request->getUri();
+                    if (!empty($request->getQueryParams())) {
+                        $uri .= '?' . $this->convertArrayQueryParamsToString($request->getQueryParams());
+                    }
+                    try {
+                        if ($request->getBody()->getSize() === 0) {
+                            $response = $client->request($request->getMethod(), $uri, [
+                                'headers' => $request->getHeaders(),
+                                'timeout' => ($this->config->devMode) ? 300 : 10,
+                            ]);
+                        } else {
+                            $response = $client->request($request->getMethod(), $uri, [
+                                'headers' => $request->getHeaders(),
+                                'body' => $request->getBody()->getContents(),
+                                'timeout' => ($this->config->devMode) ? 300 : 10,
+                            ]);
+                        }
+                    } catch (ClientException $e) {
+                        if ($e->getCode() == 404) {
+                            $response = $e->getResponse();
+                        } else {
+                            throw $e;
+                        }
+                    }
+                    $connection->sendHttpResponse($response);
+                    $connection->close();
+                }, $connection);
+            } catch (\Exception $exception) {
+                echo json_encode(['msg' => 'Http server error: ' . $exception->getMessage()]) . PHP_EOL;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * This function will try to increment lastCalledWorker and return value of 'port' subindex of $this->pool array
+     * but! There is also 'locked' subindex, that means that we need to skip this worker now.
+     * so we need to check if worker is locked and if it is, we need to skip it and call this function again
+     */
+    private function getNextWorkerNumber(int $tries = 0)
+    {
+        if ($tries > 100) {
+            //todo send allocation error to supervisor, ask him to kill all workers and servers and restart them.
+            throw new \Exception('All workers are locked');
+        }
+        $this->lastCalledWorker++;
+        if ($this->lastCalledWorker >= count($this->pool)) {
+            $this->lastCalledWorker = 0;
+        }
+        if ($this->pool[$this->lastCalledWorker]['locked']) {
+            return $this->getNextWorkerNumber();
+        }
+        return $this->pool[$this->lastCalledWorker]['port'];
+    }
+
+    private function convertArrayQueryParamsToString(array $getQueryParams)
+    {
+        $query = '';
+        foreach ($getQueryParams as $key => $value) {
+            $query .= $key . '=' . $value . '&';
+        }
+        return $query;
+    }
+
+    private function createOneTimeWorker(WorkerManager $workerManager): int
+    {
+        if ($this->lastCalledWorker > 99) {
+            $this->lastCalledWorker = 0;
+        }
+        $workerNumber = 1 + $this->lastCalledWorker;
+        $this->lastCalledWorker = $this->lastCalledWorker + 1;
+        $workerManager->createWorkerDebugMode($workerNumber, $this->config->workerCommand);
+        return $workerNumber;
+    }
+}
