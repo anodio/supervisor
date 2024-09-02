@@ -4,15 +4,15 @@ namespace Anodio\Supervisor\Control;
 
 use Anodio\Supervisor\Interfaces\WorkerLockerInterface;
 
-class HttpServerClientServer implements WorkerLockerInterface
+class HttpProxyControlClient implements WorkerLockerInterface
 {
     private static $instance;
 
     /**
-     * @return HttpServerClientServer
+     * @return HttpProxyControlClient
      * @deprecated
      */
-    public static function getInstance(): HttpServerClientServer
+    public static function getInstance(): HttpProxyControlClient
     {
         if (self::$instance === null) {
             self::$instance = new self();
@@ -22,10 +22,13 @@ class HttpServerClientServer implements WorkerLockerInterface
 
     private function __construct()
     {
-        $this->connect();
+//        $this->connect();
     }
 
-    private $socket;
+    /**
+     * @var null|resource|\Socket
+     */
+    private $socket = null;
 
     /**
      * This function should connect to tcp server
@@ -59,6 +62,12 @@ class HttpServerClientServer implements WorkerLockerInterface
      */
     private function send(array $message) {
         $json = json_encode($message);
+        if (is_null($this->socket)) {
+            $this->connect();
+        }
+        if (is_null($this->socket)) {
+            throw new \RuntimeException("Socket is not connected");
+        }
         socket_write($this->socket, $json, strlen($json));
     }
 

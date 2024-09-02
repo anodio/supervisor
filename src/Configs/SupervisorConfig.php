@@ -11,10 +11,10 @@ use Anodio\Core\Configuration\EnvRequiredNotEmpty;
 class SupervisorConfig extends AbstractConfig
 {
 
-    #[Env('APP_MODE', 'http')]
+    #[Env('SUPERVISOR_APP_MODE', 'http')]
     public string $appMode;
 
-    #[EnvRequiredNotEmpty('WORKER_COMMAND', 'php '.BASE_PATH.'/app.php http:run-worker')]
+    #[Env('SUPERVISOR_WORKER_COMMAND', 'php /var/www/php/app.php http:run-worker')]
     public string $workerCommand;
 
     #[Env('HTTP_PROXY_ENVS', '')]

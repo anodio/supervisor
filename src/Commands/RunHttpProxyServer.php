@@ -6,7 +6,7 @@ use Anodio\Supervisor\Servers\HttpProxyServer;
 use DI\Attribute\Inject;
 use Symfony\Component\Console\Command\Command;
 
-#[\Anodio\Core\Attributes\Command('supervisor:http-proxy-run')]
+#[\Anodio\Core\Attributes\Command('supervisor:http-proxy-run', description: 'Run http proxy server')]
 class RunHttpProxyServer extends Command
 {
     #[Inject]

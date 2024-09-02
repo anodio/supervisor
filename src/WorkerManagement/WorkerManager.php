@@ -1,6 +1,6 @@
 <?php
 
-namespace Anodio\Supervisor\Workers;
+namespace Anodio\Supervisor\WorkerManagement;
 
 use Swow\Channel;
 use Swow\Coroutine;
@@ -8,7 +8,6 @@ use Symfony\Component\Process\Process;
 
 class WorkerManager
 {
-
     private ?\SplFixedArray $pool = null;
 
     public function restartWorker(int $workerNumber) {
@@ -19,7 +18,7 @@ class WorkerManager
         if (!is_null($this->pool)) {
             throw new \Exception('Worker pool is already created');
         }
-        $this->pool = new \SplFixedArray($count);
+        $this->pool = new \SplFixedArray($count+1);
         $workerNumber = 1; // first worker workerNumber;
         for ($i = 0; $i < $count; $i++) {
             $controlChannel = $this->startWorkerControl($workerNumber+$i, $workerCommand);
@@ -33,7 +32,8 @@ class WorkerManager
         $process = Process::fromShellCommandline($workerCommand);
         $process->setEnv([
             'DEV_MODE' => 'true',
-            'WORKER_NUMBER' => $workerNumber,
+            'HTTP_WORKER_NUMBER' => $workerNumber,
+            'CONTAINER_NAME' => 'worker'.$workerNumber,
         ]);
         $process->setTimeout(null);
         Coroutine::run(function(Process $process) {
@@ -47,7 +47,7 @@ class WorkerManager
         $controlChannel = new Channel();
         $process = Process::fromShellCommandline($workerCommand);
         $process->setEnv([
-            'WORKER_NUMBER' => $workerNumber,
+            'HTTP_WORKER_NUMBER' => $workerNumber,
         ]);
         $process->setTimeout(null);
 

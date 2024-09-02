@@ -4,6 +4,9 @@ namespace Anodio\Supervisor\SignalControl;
 
 use Swow\Channel;
 
+/**
+ * For now we use it as singleton, not through container.
+ */
 class SignalController
 {
     private Channel $exitChannel;
@@ -28,7 +31,8 @@ class SignalController
     {
         while (true) {
             try {
-                if ($code = $this->exitChannel->pop(3000000) === null) {
+                if (($code = $this->exitChannel->pop()) !== null) {
+                    echo json_encode(['msg' => 'Worker exiting with code: ' . $code]) . PHP_EOL;
                     exit($code);
                 }
             } catch (\Throwable $e) {

@@ -4,8 +4,9 @@ namespace Anodio\Supervisor\Servers;
 
 use Anodio\Supervisor\Configs\SupervisorConfig;
 use Anodio\Supervisor\SignalControl\SignalController;
-use Anodio\Supervisor\Workers\WorkerManager;
+use Anodio\Supervisor\WorkerManagement\WorkerManager;
 use DI\Attribute\Inject;
+use GuzzleHttp\Exception\ClientException;
 use Swow\Buffer;
 use Swow\Channel;
 use Swow\Coroutine;
@@ -13,14 +14,13 @@ use Swow\Psr7\Server\Server;
 use Swow\Psr7\Server\ServerConnection;
 use Swow\Socket;
 use Swow\SocketException;
-use Symfony\Component\HttpClient\Exception\ClientException;
 
 class HttpProxyServer
 {
     private ?\SplFixedArray $pool = null;
 
     #[Inject]
-    public SupervisorConfig $config;
+    public SupervisorConfig $supervisorConfig;
 
     private int $lastCalledWorker = 0;
 
@@ -114,14 +114,16 @@ class HttpProxyServer
 
     public function run(): bool
     {
-        if ($this->config->devMode) {
+        $this->pool = new \SplFixedArray($this->supervisorConfig->workerCount);
+
+        if ($this->supervisorConfig->devMode) {
             $startWorkerCount = 0;
         } else {
-            $startWorkerCount = $this->config->workerCount;
+            $startWorkerCount = $this->supervisorConfig->workerCount;
         }
 
         $workerManager = new WorkerManager();
-        if ($this->config->devMode) {
+        if ($this->supervisorConfig->devMode) {
             echo json_encode(['msg' => 'Http server in dev worker mode']) . PHP_EOL;
         } else {
             echo json_encode(['msg' => 'Http server in static pool worker mode']) . PHP_EOL;
@@ -141,7 +143,7 @@ class HttpProxyServer
                 // now lets resend this psr7 request to worker via guzzle
                 Coroutine::run(function (ServerConnection $connection) use ($workerManager) {
                     $request = $connection->recvHttpRequest();
-                    if ($this->config->devMode) {
+                    if ($this->supervisorConfig->devMode) {
                         $workerNumber = $this->createOneTimeWorker($workerManager);
                     } else {
                         $workerNumber = $this->getNextWorkerNumber();
@@ -158,21 +160,17 @@ class HttpProxyServer
                         if ($request->getBody()->getSize() === 0) {
                             $response = $client->request($request->getMethod(), $uri, [
                                 'headers' => $request->getHeaders(),
-                                'timeout' => ($this->config->devMode) ? 300 : 10,
+                                'timeout' => ($this->supervisorConfig->devMode) ? 300 : 10,
                             ]);
                         } else {
                             $response = $client->request($request->getMethod(), $uri, [
                                 'headers' => $request->getHeaders(),
                                 'body' => $request->getBody()->getContents(),
-                                'timeout' => ($this->config->devMode) ? 300 : 10,
+                                'timeout' => ($this->supervisorConfig->devMode) ? 300 : 10,
                             ]);
                         }
                     } catch (ClientException $e) {
-                        if ($e->getCode() == 404) {
-                            $response = $e->getResponse();
-                        } else {
-                            throw $e;
-                        }
+                        $response = $e->getResponse();
                     }
                     $connection->sendHttpResponse($response);
                     $connection->close();
@@ -202,7 +200,7 @@ class HttpProxyServer
         if ($this->pool[$this->lastCalledWorker]['locked']) {
             return $this->getNextWorkerNumber();
         }
-        return $this->pool[$this->lastCalledWorker]['port'];
+        return $this->pool[$this->lastCalledWorker]['port']-8080;
     }
 
     private function convertArrayQueryParamsToString(array $getQueryParams)
@@ -221,7 +219,7 @@ class HttpProxyServer
         }
         $workerNumber = 1 + $this->lastCalledWorker;
         $this->lastCalledWorker = $this->lastCalledWorker + 1;
-        $workerManager->createWorkerDebugMode($workerNumber, $this->config->workerCommand);
+        $workerManager->createWorkerDebugMode($workerNumber, $this->supervisorConfig->workerCommand);
         return $workerNumber;
     }
 }

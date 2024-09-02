@@ -3,9 +3,9 @@
 namespace Anodio\Supervisor\Commands;
 
 use Anodio\Supervisor\Configs\SupervisorConfig;
-use Anodio\Supervisor\Control\HttpServerClientServer;
+use Anodio\Supervisor\Control\HttpProxyControlClient;
 use Anodio\Supervisor\Control\SupervisorControlCenter;
-use Anodio\Supervisor\Workers\WorkerManager;
+use Anodio\Supervisor\WorkerManagement\WorkerManager;
 use DI\Attribute\Inject;
 use Swow\Buffer;
 use Swow\Channel;
@@ -15,10 +15,9 @@ use Swow\SocketException;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Process\Process;
 
-#[\Anodio\Core\Attributes\Command('supervisor:run')]
+#[\Anodio\Core\Attributes\Command('supervisor:run', description: 'Run supervisor')]
 class RunSupervisorCommand extends Command
 {
-
     #[Inject]
     public SupervisorConfig $supervisorConfig;
 
@@ -52,10 +51,10 @@ class RunSupervisorCommand extends Command
         if (!$this->supervisorConfig->devMode) {
             $workerManager = new WorkerManager();
             if ($this->supervisorConfig->appMode=='http') {
-                $workerCount = $this->supervisorConfig->workerCount;
-                $workerLocker = HttpServerClientServer::getInstance();
                 $proxyHttpControlChannel = $this->runHttpProxyServerProcess(); //todo
+                $workerCount = $this->supervisorConfig->workerCount;
                 $workerManager->createWorkerPool($workerCount, $this->supervisorConfig->workerCommand); //todo
+                $workerLocker = HttpProxyControlClient::getInstance();
             } elseif ('true'=='false') {
 
             } else {
@@ -107,15 +106,17 @@ class RunSupervisorCommand extends Command
     public function runHttpProxyServerProcess(): Channel {
         $controlChannel = new Channel();
         $process = Process::fromShellCommandline('php '.BASE_PATH.'/app.php supervisor:http-proxy-run');
+        $envs = [
+            'CONTAINER_NAME'=>'http-proxy',
+        ];
         if (trim($this->supervisorConfig->envsForHttpProxy)!=='') {
             $explodedEnvs = explode(';', $this->supervisorConfig->envsForHttpProxy);
-            $envs = [];
             foreach ($explodedEnvs as $env) {
                 $explodedEnv = explode('=', $env);
                 $envs[$explodedEnv[0]] = $explodedEnv[1];
             }
-            $process->setEnv($envs);
         }
+        $process->setEnv($envs);
         $process->setTimeout(null);
         Coroutine::run(function(Process $process) {
             $process->run(function ($type, $buffer) {

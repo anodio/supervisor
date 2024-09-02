@@ -4,7 +4,7 @@ namespace Anodio\Supervisor\Control;
 
 use Anodio\Supervisor\Configs\SupervisorConfig;
 use Anodio\Supervisor\Interfaces\WorkerLockerInterface;
-use Anodio\Supervisor\Workers\WorkerManager;
+use Anodio\Supervisor\WorkerManagement\WorkerManager;
 use Swow\Channel;
 use Swow\Coroutine;
 
