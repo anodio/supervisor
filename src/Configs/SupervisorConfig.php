@@ -5,7 +5,6 @@ namespace Anodio\Supervisor\Configs;
 use Anodio\Core\AttributeInterfaces\AbstractConfig;
 use Anodio\Core\Attributes\Config;
 use Anodio\Core\Configuration\Env;
-use Anodio\Core\Configuration\EnvRequiredNotEmpty;
 
 #[Config('supervisor')]
 class SupervisorConfig extends AbstractConfig
