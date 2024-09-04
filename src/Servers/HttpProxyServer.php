@@ -53,7 +53,22 @@ class HttpProxyServer
                             break;
                         }
                         $message = $buffer->read(length: $length);
-                        echo "No.{$connection->getFd()} say: \"" . addcslashes($message, "\r\n") . '"' . PHP_EOL;
+                        $messageExploded = explode('}{', $message);
+                        if (count($messageExploded)>1) {
+                            $count = count($messageExploded);
+                            foreach ($messageExploded as $key=>$oneMessage) {
+                                if ($key==0) {
+                                    $oneMessage = $oneMessage.'}';
+                                } elseif ($key==$count-1) {
+                                    $oneMessage = '{'.$oneMessage;
+                                } else {
+                                    $oneMessage = '{'.$oneMessage.'}';
+                                }
+                                $controlChannel->push(json_decode($oneMessage, true, 512, JSON_THROW_ON_ERROR));
+                            }
+                        } else {
+                            $controlChannel->push(json_decode($message, true, 512, JSON_THROW_ON_ERROR));
+                        }
                         $controlChannel->push(json_decode($message, true));
                     }
                     echo "No.{$connection->getFd()} closed" . PHP_EOL;
