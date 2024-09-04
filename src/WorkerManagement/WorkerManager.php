@@ -32,7 +32,7 @@ class WorkerManager
         $process = Process::fromShellCommandline($workerCommand);
         $process->setEnv([
             'DEV_MODE' => 'true',
-            'HTTP_WORKER_NUMBER' => $workerNumber,
+            'WORKER_NUMBER' => $workerNumber,
             'CONTAINER_NAME' => 'worker'.$workerNumber,
         ]);
         $process->setTimeout(null);
@@ -47,7 +47,9 @@ class WorkerManager
         $controlChannel = new Channel();
         $process = Process::fromShellCommandline($workerCommand);
         $process->setEnv([
-            'HTTP_WORKER_NUMBER' => $workerNumber,
+            'DEV_MODE' => 'false',
+            'WORKER_NUMBER' => $workerNumber,
+            'CONTAINER_NAME' => 'worker'.$workerNumber,
         ]);
         $process->setTimeout(null);
 
