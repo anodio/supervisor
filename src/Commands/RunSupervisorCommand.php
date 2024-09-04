@@ -2,16 +2,25 @@
 
 namespace Anodio\Supervisor\Commands;
 
+use Anodio\Core\ContainerStorage;
 use Anodio\Supervisor\Configs\SupervisorConfig;
 use Anodio\Supervisor\Control\HttpProxyControlClient;
 use Anodio\Supervisor\Control\SupervisorControlCenter;
 use Anodio\Supervisor\WorkerManagement\WorkerManager;
 use DI\Attribute\Inject;
+use GuzzleHttp\Exception\ClientException;
+use Prometheus\CollectorRegistry;
+use Prometheus\RenderTextFormat;
 use Swow\Buffer;
 use Swow\Channel;
 use Swow\Coroutine;
+use Swow\Psr7\Message\Response;
+use Swow\Psr7\Server\Server;
+use Swow\Psr7\Server\ServerConnection;
 use Swow\Socket;
 use Swow\SocketException;
+use Swow\Stream\EofStream;
+use Swow\Stream\JsonStream;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Process\Process;
 
@@ -47,6 +56,7 @@ class RunSupervisorCommand extends Command
             throw new \Exception('App mode is not recognized');
         }
         $supervisorControlChannel = $this->runSupervisorControlServer();
+        $this->runSupervisorMetricsServer();
 
         if (!$this->supervisorConfig->devMode) {
             $workerManager = new WorkerManager();
@@ -60,7 +70,13 @@ class RunSupervisorCommand extends Command
             } else {
                 throw new \Exception('App mode is not recognized');
             }
-            $supervisorControlCenter = new SupervisorControlCenter($supervisorControlChannel, $workerLocker, $workerManager, $this->supervisorConfig);
+            $supervisorControlCenter = new SupervisorControlCenter(
+                supervisorControlChannel: $supervisorControlChannel,
+                workerLocker: $workerLocker,
+                workerManager: $workerManager,
+                config: $this->supervisorConfig,
+                inMemoryMetricsStorage: ContainerStorage::getContainer()->get(\Prometheus\Storage\Adapter::class)
+            );
         } else {
             if ($this->supervisorConfig->appMode=='http') {
                 $proxyHttpControlChannel = $this->runHttpProxyServerProcess();
@@ -69,11 +85,46 @@ class RunSupervisorCommand extends Command
             } else {
                 throw new \Exception('App mode is not recognized');
             }
-            $supervisorControlCenter = new SupervisorControlCenter($supervisorControlChannel, null, null, $this->supervisorConfig);
+            $supervisorControlCenter = new SupervisorControlCenter(
+                supervisorControlChannel: $supervisorControlChannel,
+                workerLocker: null,
+                workerManager: null,
+                config: $this->supervisorConfig,
+                inMemoryMetricsStorage: ContainerStorage::getContainer()->get(\Prometheus\Storage\Adapter::class)
+            );
         }
 
         $supervisorControlCenter->control();
         return true;
+    }
+
+    public function runSupervisorMetricsServer(): void {
+        Coroutine::run(
+            function() {
+                $server = new Server(Socket::TYPE_TCP);
+                $server->bind('0.0.0.0', 7071)->listen();
+                while(true) {
+                    $connection = $server->acceptConnection();
+                    $connection->recvHttpRequest();
+                    try {
+                        $renderer = new RenderTextFormat();
+                        $response = new Response();
+                        $response->addHeader('Content-Type', RenderTextFormat::MIME_TYPE);
+                        $response->getBody()->write(
+                            $renderer->render(
+                                ContainerStorage::getMainContainer()
+                                    ->get(CollectorRegistry::class)
+                                    ->getMetricFamilySamples()
+                            )
+                        );
+                    } catch (ClientException $e) {
+                        $response = $e->getResponse();
+                    }
+                    $connection->sendHttpResponse($response);
+                    $connection->close();
+                }
+            }
+        );
     }
 
     public function runSupervisorControlServer(): Channel {
@@ -92,7 +143,23 @@ class RunSupervisorCommand extends Command
                                 break;
                             }
                             $message = $buffer->read(length: $length);
-                            $controlChannel->push(json_decode($message, true));
+
+                            $messageExploded = explode('}{', $message);
+                            if (count($messageExploded)>1) {
+                                $count = count($messageExploded);
+                                foreach ($messageExploded as $key=>$oneMessage) {
+                                    if ($key==0) {
+                                        $oneMessage = $oneMessage.'}';
+                                    } elseif ($key==$count-1) {
+                                        $oneMessage = '{'.$oneMessage;
+                                    } else {
+                                        $oneMessage = '{'.$oneMessage.'}';
+                                    }
+                                    $controlChannel->push(json_decode($oneMessage, true, 512, JSON_THROW_ON_ERROR));
+                                }
+                            } else {
+                                $controlChannel->push(json_decode($message, true, 512, JSON_THROW_ON_ERROR));
+                            }
                         }
                     } catch (SocketException $exception) {
                         throw $exception;
