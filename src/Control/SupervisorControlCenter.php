@@ -66,7 +66,7 @@ class SupervisorControlCenter
 
         if ($message['command'] === 'workerStats' && $message['sender'] === 'worker') {
             $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
-            $registry->getOrRegisterGauge('worker_memory_usage_from_supervisor', 'worker_memory_usage', 'worker_memory_usage', ['worker_number'])->set($message['stats']['memory']/1024/1024);
+            $registry->getOrRegisterGauge('worker_memory_usage_from_supervisor', 'worker_memory_usage', 'worker_memory_usage', ['worker_number'])->set($message['stats']['memory']/1024/1024, [$message['workerNumber']]);
             $memory = $message['stats']['memory']/1024/1024; //mb
             if ($memory > $this->config->maxMemory) {
                 $this->workerLocker->lockWorker($message['workerNumber']);
