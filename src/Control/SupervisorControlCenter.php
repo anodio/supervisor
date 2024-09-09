@@ -2,10 +2,12 @@
 
 namespace Anodio\Supervisor\Control;
 
+use Anodio\Core\ContainerStorage;
 use Anodio\Core\Helpers\Log;
 use Anodio\Supervisor\Configs\SupervisorConfig;
 use Anodio\Supervisor\Interfaces\WorkerLockerInterface;
 use Anodio\Supervisor\WorkerManagement\WorkerManager;
+use Prometheus\CollectorRegistry;
 use Prometheus\Storage\InMemory;
 use Swow\Channel;
 use Swow\Coroutine;
@@ -63,6 +65,8 @@ class SupervisorControlCenter
         }
 
         if ($message['command'] === 'workerStats' && $message['sender'] === 'worker') {
+            $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
+            $registry->getOrRegisterGauge('worker_memory_usage_from_supervisor', 'worker_memory_usage', 'worker_memory_usage', ['worker_number'])->set($message['stats']['memory']/1024/1024);
             $memory = $message['stats']['memory']/1024/1024; //mb
             if ($memory > $this->config->maxMemory) {
                 $this->workerLocker->lockWorker($message['workerNumber']);
