@@ -7,6 +7,7 @@ use Anodio\Supervisor\SignalControl\SignalController;
 use Anodio\Supervisor\WorkerManagement\WorkerManager;
 use DI\Attribute\Inject;
 use GuzzleHttp\Exception\ClientException;
+use GuzzleHttp\Exception\RequestException;
 use Swow\Buffer;
 use Swow\Channel;
 use Swow\Coroutine;
@@ -184,8 +185,12 @@ class HttpProxyServer
                                 'timeout' => ($this->supervisorConfig->devMode) ? 300 : 10,
                             ]);
                         }
-                    } catch (ClientException $e) {
-                        $response = $e->getResponse();
+                    } catch (\Throwable $e) {
+                        if (!method_exists($e, 'getResponse')) {
+                            $response = new \GuzzleHttp\Psr7\Response(500, [], json_encode(['msg' => 'Http server error: ' . $e->getMessage()]));
+                        } else {
+                            $response = $e->getResponse();
+                        }
                     }
                     $connection->sendHttpResponse($response);
                     $connection->close();
