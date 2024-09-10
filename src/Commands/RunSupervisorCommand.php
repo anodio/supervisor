@@ -3,6 +3,7 @@
 namespace Anodio\Supervisor\Commands;
 
 use Anodio\Core\ContainerStorage;
+use Anodio\Core\Helpers\Log;
 use Anodio\Supervisor\Configs\SupervisorConfig;
 use Anodio\Supervisor\Control\HttpProxyControlClient;
 use Anodio\Supervisor\Control\SupervisorControlCenter;
@@ -98,7 +99,32 @@ class RunSupervisorCommand extends Command
         return true;
     }
 
+    public function getMetricsByYourselfThroughCurl(): string
+    {
+        $ch = curl_init('http://127.0.0.1:7071');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $response = curl_exec($ch);
+        curl_close($ch);
+        return $response;
+    }
+
     public function runSupervisorMetricsServer(): void {
+        Coroutine::run(function() {
+            $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
+            while(true) {
+                $registry->getOrRegisterGauge('system_php', 'supervisor_memory_usage_gauge', 'supervisor_memory_usage_gauge')
+                    ->set(memory_get_usage() / 1024 / 1024);
+                $cpuAvg = sys_getloadavg();
+                $registry->getOrRegisterGauge('system_php', 'supervisor_cpu_usage_gauge', 'supervisor_cpu_usage_gauge', ['per'])
+                    ->set($cpuAvg[0], ['1min']);
+                $registry->getOrRegisterGauge('system_php', 'supervisor_cpu_usage_gauge', 'supervisor_cpu_usage_gauge', ['per'])
+                    ->set($cpuAvg[1], ['5min']);
+                $registry->getOrRegisterGauge('system_php', 'supervisor_cpu_usage_gauge', 'supervisor_cpu_usage_gauge', ['per'])
+                    ->set($cpuAvg[2], ['15min']);
+                Log::info($this->getMetricsByYourselfThroughCurl());
+                sleep(5);
+            }
+        });
         Coroutine::run(
             function() {
                 $server = new Server(Socket::TYPE_TCP);

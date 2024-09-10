@@ -2,12 +2,12 @@
 
 namespace Anodio\Supervisor\Servers;
 
+use Anodio\Core\ContainerStorage;
 use Anodio\Supervisor\Configs\SupervisorConfig;
 use Anodio\Supervisor\SignalControl\SignalController;
 use Anodio\Supervisor\WorkerManagement\WorkerManager;
 use DI\Attribute\Inject;
-use GuzzleHttp\Exception\ClientException;
-use GuzzleHttp\Exception\RequestException;
+use Prometheus\CollectorRegistry;
 use Swow\Buffer;
 use Swow\Channel;
 use Swow\Coroutine;
@@ -83,6 +83,21 @@ class HttpProxyServer
 
     private function runControl()
     {
+        Coroutine::run(function() {
+           $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
+           while(true) {
+               $registry->getOrRegisterGauge('system_php', 'http_proxy_memory_usage_gauge', 'http_proxy_memory_usage_gauge')
+                   ->set(memory_get_usage() / 1024 / 1024);
+               $cpuAvg = sys_getloadavg();
+               $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
+                   ->set($cpuAvg[0], ['1min']);
+                $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
+                    ->set($cpuAvg[1], ['5min']);
+                $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
+                    ->set($cpuAvg[2], ['15min']);
+               sleep(5);
+           }
+        });
         Coroutine::run(function () {
             $channel = $this->createControlTCPServer();
             while (true) {
