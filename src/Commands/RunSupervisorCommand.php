@@ -12,6 +12,7 @@ use DI\Attribute\Inject;
 use GuzzleHttp\Exception\ClientException;
 use Prometheus\CollectorRegistry;
 use Prometheus\RenderTextFormat;
+use Psr\Log\LoggerInterface;
 use Swow\Buffer;
 use Swow\Channel;
 use Swow\Coroutine;
@@ -99,18 +100,10 @@ class RunSupervisorCommand extends Command
         return true;
     }
 
-    public function getMetricsByYourselfThroughCurl(): string
-    {
-        $ch = curl_init('http://127.0.0.1:7071');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        $response = curl_exec($ch);
-        curl_close($ch);
-        return $response;
-    }
-
     public function runSupervisorMetricsServer(): void {
         Coroutine::run(function() {
             $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
+            ContainerStorage::setContainer(ContainerStorage::getMainContainer());
             while(true) {
                 $registry->getOrRegisterGauge('system_php', 'supervisor_memory_usage_gauge', 'supervisor_memory_usage_gauge')
                     ->set(memory_get_usage() / 1024 / 1024);
@@ -121,7 +114,6 @@ class RunSupervisorCommand extends Command
                     ->set($cpuAvg[1], ['5min']);
                 $registry->getOrRegisterGauge('system_php', 'supervisor_cpu_usage_gauge', 'supervisor_cpu_usage_gauge', ['per'])
                     ->set($cpuAvg[2], ['15min']);
-                Log::info($this->getMetricsByYourselfThroughCurl());
                 sleep(5);
             }
         });
@@ -143,6 +135,18 @@ class RunSupervisorCommand extends Command
                                     ->getMetricFamilySamples()
                             )
                         );
+
+                        ContainerStorage::setContainer(ContainerStorage::getMainContainer());
+                        ContainerStorage::getContainer()->get(LoggerInterface::class)
+                            ->info('Metrics requested', ['metrics'=>
+                            $renderer->render(
+                            ContainerStorage::getMainContainer()
+                                ->get(CollectorRegistry::class)
+                                ->getMetricFamilySamples()
+                            )
+                        ]);
+                        ContainerStorage::removeContainer();
+
                     } catch (ClientException $e) {
                         $response = $e->getResponse();
                     }

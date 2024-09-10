@@ -85,6 +85,7 @@ class HttpProxyServer
     {
         Coroutine::run(function() {
            $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
+           ContainerStorage::setContainer(ContainerStorage::getMainContainer());
            while(true) {
                $registry->getOrRegisterGauge('system_php', 'http_proxy_memory_usage_gauge', 'http_proxy_memory_usage_gauge')
                    ->set(memory_get_usage() / 1024 / 1024);
