@@ -192,13 +192,13 @@ class HttpProxyServer
                         if ($request->getBody()->getSize() === 0) {
                             $response = $client->request($request->getMethod(), $uri, [
                                 'headers' => $request->getHeaders(),
-                                'timeout' => ($this->supervisorConfig->devMode) ? 300 : 10,
+                                'timeout' => ($this->supervisorConfig->devMode) ? 300 : 60,
                             ]);
                         } else {
                             $response = $client->request($request->getMethod(), $uri, [
                                 'headers' => $request->getHeaders(),
                                 'body' => $request->getBody()->getContents(),
-                                'timeout' => ($this->supervisorConfig->devMode) ? 300 : 10,
+                                'timeout' => ($this->supervisorConfig->devMode) ? 300 : 60,
                             ]);
                         }
                     } catch (\Throwable $e) {
