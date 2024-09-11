@@ -136,16 +136,16 @@ class RunSupervisorCommand extends Command
                             )
                         );
 
-                        ContainerStorage::setContainer(ContainerStorage::getMainContainer());
-                        ContainerStorage::getContainer()->get(LoggerInterface::class)
-                            ->info('Metrics requested', ['metrics'=>
-                            $renderer->render(
-                            ContainerStorage::getMainContainer()
-                                ->get(CollectorRegistry::class)
-                                ->getMetricFamilySamples()
-                            )
-                        ]);
-                        ContainerStorage::removeContainer();
+//                        ContainerStorage::setContainer(ContainerStorage::getMainContainer());
+//                        ContainerStorage::getContainer()->get(LoggerInterface::class)
+//                            ->info('Metrics requested', ['metrics'=>
+//                            $renderer->render(
+//                            ContainerStorage::getMainContainer()
+//                                ->get(CollectorRegistry::class)
+//                                ->getMetricFamilySamples()
+//                            )
+//                        ]);
+//                        ContainerStorage::removeContainer();
 
                     } catch (ClientException $e) {
                         $response = $e->getResponse();
