@@ -204,6 +204,8 @@ class HttpProxyServer
                     } catch (\Throwable $e) {
                         if (!method_exists($e, 'getResponse')) {
                             $response = new \GuzzleHttp\Psr7\Response(500, [], json_encode(['msg' => 'Http server error: ' . $e->getMessage()]));
+                            echo json_encode(['msg' => 'Http server error: ' . $e->getMessage()]) . PHP_EOL;
+                            //todo metric needed
                         } else {
                             $response = $e->getResponse();
                         }
