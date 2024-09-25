@@ -168,10 +168,16 @@ class HttpProxyServer
         }
         $this->runControl();
         $server = $this->createServer();
+        $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
+        $registry->registerCounter('system_php', 'http_proxy_queries_counter', 'Http queries on http proxy counter');
         while (true) {
             try {
                 $connection = null;
                 $connection = $server->acceptConnection();
+                Coroutine::run(function() {
+                    $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
+                    $registry->getCounter('system_php', 'http_proxy_queries_counter')->inc();
+                });
                 // now lets resend this psr7 request to worker via guzzle
                 Coroutine::run(function (ServerConnection $connection) use ($workerManager) {
                     $request = $connection->recvHttpRequest();
