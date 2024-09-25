@@ -96,7 +96,7 @@ class HttpProxyServer
                     ->set($cpuAvg[1], ['5min']);
                 $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
                     ->set($cpuAvg[2], ['15min']);
-               sleep(5);
+               sleep(15);
            }
         });
         Coroutine::run(function () {
