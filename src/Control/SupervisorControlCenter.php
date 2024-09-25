@@ -51,16 +51,16 @@ class SupervisorControlCenter
 
     public function handleMessage(array $message): void
     {
-        if ($message['command'] === 'updateCounterMetrics' && $message['sender'] === 'worker') {
+        if ($message['command'] === 'updateCounterMetrics' && ($message['sender'] === 'worker' || $message['sender'] === 'http-proxy')) {
             $this->metricsStorage->updateCounter($message['data']);
         }
-        if ($message['command'] === 'updateGaugeMetrics' && $message['sender'] === 'worker') {
+        if ($message['command'] === 'updateGaugeMetrics' && ($message['sender'] === 'worker' || $message['sender'] === 'http-proxy')) {
             $this->metricsStorage->updateGauge($message['data']);
         }
-        if ($message['command'] === 'updateHistogramMetrics' && $message['sender'] === 'worker') {
+        if ($message['command'] === 'updateHistogramMetrics' && ($message['sender'] === 'worker' || $message['sender'] === 'http-proxy')) {
             $this->metricsStorage->updateHistogram($message['data']);
         }
-        if ($message['command'] === 'updateSummaryMetrics' && $message['sender'] === 'worker') {
+        if ($message['command'] === 'updateSummaryMetrics' && ($message['sender'] === 'worker' || $message['sender'] === 'http-proxy')) {
             $this->metricsStorage->updateSummary($message['data']);
         }
 
