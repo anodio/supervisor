@@ -83,22 +83,24 @@ class HttpProxyServer
 
     private function runControl()
     {
-        Coroutine::run(function() {
-           $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
-           ContainerStorage::setContainer(ContainerStorage::getMainContainer());
-           while(true) {
-               $registry->getOrRegisterGauge('system_php', 'http_proxy_memory_usage_gauge', 'http_proxy_memory_usage_gauge')
-                   ->set(memory_get_usage(true) / 1024 / 1024);
-               $cpuAvg = sys_getloadavg();
-               $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
-                   ->set($cpuAvg[0], ['1min']);
-                $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
-                    ->set($cpuAvg[1], ['5min']);
-                $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
-                    ->set($cpuAvg[2], ['15min']);
-               sleep(15);
-           }
-        });
+//        Coroutine::run(function() {
+//           $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
+//           ContainerStorage::setContainer(ContainerStorage::getMainContainer());
+//           while(true) {
+//               $registry->getOrRegisterGauge('system_php', 'http_proxy_memory_peak_usage_gauge', 'http_proxy_memory_peak_usage_gauge')
+//                   ->set(memory_get_peak_usage(true) / 1024 / 1024);
+//               $registry->getOrRegisterGauge('system_php', 'http_proxy_memory_usage_gauge', 'http_proxy_memory_usage_gauge')
+//                   ->set(memory_get_usage(true) / 1024 / 1024);
+//               $cpuAvg = sys_getloadavg();
+//               $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
+//                   ->set($cpuAvg[0], ['1min']);
+//                $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
+//                    ->set($cpuAvg[1], ['5min']);
+//                $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
+//                    ->set($cpuAvg[2], ['15min']);
+//               sleep(15);
+//           }
+//        });
         Coroutine::run(function () {
             $channel = $this->createControlTCPServer();
             while (true) {
@@ -218,6 +220,18 @@ class HttpProxyServer
                     }
                     $connection->sendHttpResponse($response);
                     $connection->close();
+                    $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
+                    $registry->getOrRegisterGauge('system_php', 'http_proxy_memory_peak_usage_gauge', 'http_proxy_memory_peak_usage_gauge')
+                        ->set(memory_get_peak_usage(true) / 1024 / 1024);
+                    $registry->getOrRegisterGauge('system_php', 'http_proxy_memory_usage_gauge', 'http_proxy_memory_usage_gauge')
+                        ->set(memory_get_usage(true) / 1024 / 1024);
+                    $cpuAvg = sys_getloadavg();
+                    $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
+                        ->set($cpuAvg[0], ['1min']);
+                    $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
+                        ->set($cpuAvg[1], ['5min']);
+                    $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
+                        ->set($cpuAvg[2], ['15min']);
                 }, $connection);
             } catch (\Exception $exception) {
                 echo json_encode(['msg' => 'Http server error: ' . $exception->getMessage()]) . PHP_EOL;

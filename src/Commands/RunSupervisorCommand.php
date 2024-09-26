@@ -105,6 +105,8 @@ class RunSupervisorCommand extends Command
             $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
             ContainerStorage::setContainer(ContainerStorage::getMainContainer());
             while(true) {
+                $registry->getOrRegisterGauge('system_php', 'supervisor_memory_peak_usage_gauge', 'supervisor_memory_peak_usage_gauge')
+                    ->set(memory_get_peak_usage(true) / 1024 / 1024);
                 $registry->getOrRegisterGauge('system_php', 'supervisor_memory_usage_gauge', 'supervisor_memory_usage_gauge')
                     ->set(memory_get_usage(true) / 1024 / 1024);
                 $cpuAvg = sys_getloadavg();
