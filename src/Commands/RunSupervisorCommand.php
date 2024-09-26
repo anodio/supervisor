@@ -7,6 +7,7 @@ use Anodio\Core\Helpers\Log;
 use Anodio\Supervisor\Configs\SupervisorConfig;
 use Anodio\Supervisor\Control\HttpProxyControlClient;
 use Anodio\Supervisor\Control\SupervisorControlCenter;
+use Anodio\Supervisor\SignalControl\SignalController;
 use Anodio\Supervisor\WorkerManagement\WorkerManager;
 use DI\Attribute\Inject;
 use GuzzleHttp\Exception\ClientException;
@@ -167,7 +168,7 @@ class RunSupervisorCommand extends Command
             while (true) {
                 $connection = $server->accept();
                 Coroutine::run(function(Socket $connection, Channel $controlChannel) {
-                    $buffer = new Buffer(Buffer::COMMON_SIZE);
+                    $buffer = new Buffer(64000);
                     try {
                         while (true) {
                             $length = $connection->recv($buffer);
@@ -193,8 +194,9 @@ class RunSupervisorCommand extends Command
                                 $controlChannel->push(json_decode($message, true, 512, JSON_THROW_ON_ERROR));
                             }
                         }
-                    } catch (SocketException $exception) {
-                        throw $exception;
+                    } catch (\Throwable $exception) {
+                        echo json_encode('Error in supervisorControl: '.$exception->getMessage());
+                        SignalController::getInstance()->sendExitSignal(1);
                     }
                 }, $connection, $controlChannel);
             }

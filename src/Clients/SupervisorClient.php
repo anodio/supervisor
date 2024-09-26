@@ -68,7 +68,7 @@ class SupervisorClient
             $message['sender']=$sender;
         }
 
-        $json = json_encode($message);
+        $json = json_encode($message, JSON_UNESCAPED_SLASHES);
         socket_write($this->socket, $json, strlen($json));
     }
 }

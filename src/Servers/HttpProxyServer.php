@@ -172,24 +172,35 @@ class HttpProxyServer
         $server = $this->createServer();
         $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
         $registry->registerCounter('system_php', 'http_proxy_queries_counter', 'Http queries on http proxy counter');
+        $currentQueriesCount = 0;
         while (true) {
             try {
                 $connection = null;
                 $connection = $server->acceptConnection();
+                if ($currentQueriesCount+1>100) {
+                    Coroutine::run(function (ServerConnection $connection) use ($workerManager) {
+                        $response = new \GuzzleHttp\Psr7\Response(503, [], json_encode(['msg' => 'Too many queries. Relax, get a tea and try again later']));
+                        $connection->sendHttpResponse($response);
+                        $connection->close();
+                        echo json_encode(['msg' => 'Too many queries. Relax, get a tea and try again later']) . PHP_EOL;
+                    }, $connection);
+                    continue;
+                }
+                $currentQueriesCount++;
                 Coroutine::run(function() {
                     $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
                     $registry->getCounter('system_php', 'http_proxy_queries_counter')->inc();
                 });
                 // now lets resend this psr7 request to worker via guzzle
-                Coroutine::run(function (ServerConnection $connection) use ($workerManager) {
+                Coroutine::run(function (ServerConnection $connection) use ($workerManager, &$currentQueriesCount) {
                     $request = $connection->recvHttpRequest();
                     if ($this->supervisorConfig->devMode) {
                         $workerNumber = $this->createOneTimeWorker($workerManager);
+                        $this->checkIfWorkerIsReady($workerNumber);
                     } else {
                         $workerNumber = $this->getNextWorkerNumber();
                     }
                     $client = new \GuzzleHttp\Client();
-                    $this->checkIfWorkerIsReady($workerNumber);
                     $workerPort = $workerNumber + 8080;
                     //separate requests to queries with bodies and without them
                     $uri = 'http://0.0.0.0:' . $workerPort . $request->getUri();
@@ -220,6 +231,7 @@ class HttpProxyServer
                     }
                     $connection->sendHttpResponse($response);
                     $connection->close();
+                    $currentQueriesCount--;
                     $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
                     $registry->getOrRegisterGauge('system_php', 'http_proxy_memory_peak_usage_gauge', 'http_proxy_memory_peak_usage_gauge')
                         ->set(memory_get_peak_usage(true) / 1024 / 1024);

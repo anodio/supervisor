@@ -49,6 +49,22 @@ class SupervisorControlCenter
 
     public function handleMessage(array $message): void
     {
+        if ($message['command'] === 'updateBatchMetrics' && ($message['sender'] === 'worker' || $message['sender'] === 'http-proxy')) {
+            foreach ($message['data'] as $dataInfo) {
+                if ($dataInfo['command'] === 'updateCounterMetrics') {
+                    $this->metricsStorage->updateCounter($dataInfo['data']);
+                }
+                if ($dataInfo['command'] === 'updateGaugeMetrics') {
+                    $this->metricsStorage->updateGauge($dataInfo['data']);
+                }
+                if ($dataInfo['command'] === 'updateHistogramMetrics') {
+                    $this->metricsStorage->updateHistogram($dataInfo['data']);
+                }
+                if ($dataInfo['command'] === 'updateSummaryMetrics') {
+                    $this->metricsStorage->updateSummary($dataInfo['data']);
+                }
+            }
+        }
         if ($message['command'] === 'updateCounterMetrics' && ($message['sender'] === 'worker' || $message['sender'] === 'http-proxy')) {
             $this->metricsStorage->updateCounter($message['data']);
         }
