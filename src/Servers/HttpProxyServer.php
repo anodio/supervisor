@@ -88,7 +88,7 @@ class HttpProxyServer
            ContainerStorage::setContainer(ContainerStorage::getMainContainer());
            while(true) {
                $registry->getOrRegisterGauge('system_php', 'http_proxy_memory_usage_gauge', 'http_proxy_memory_usage_gauge')
-                   ->set(memory_get_usage() / 1024 / 1024);
+                   ->set(memory_get_usage(true) / 1024 / 1024);
                $cpuAvg = sys_getloadavg();
                $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
                    ->set($cpuAvg[0], ['1min']);
