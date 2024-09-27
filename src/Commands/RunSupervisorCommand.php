@@ -170,12 +170,14 @@ class RunSupervisorCommand extends Command
                 Coroutine::run(function(Socket $connection, Channel $controlChannel) {
                     $buffer = new Buffer(64000);
                     try {
+                        $internalBuffer = '';
                         while (true) {
                             $length = $connection->recv($buffer);
                             if ($length === 0) {
                                 break;
                             }
-                            $message = $buffer->read(length: $length);
+                            $message = $internalBuffer.$buffer->read(length: $length);
+                            $internalBuffer='';
 
                             $messageExploded = explode('}{', $message);
                             if (count($messageExploded)>1) {
@@ -188,7 +190,16 @@ class RunSupervisorCommand extends Command
                                     } else {
                                         $oneMessage = '{'.$oneMessage.'}';
                                     }
-                                    $controlChannel->push(json_decode($oneMessage, true, 512, JSON_THROW_ON_ERROR));
+                                    try {
+                                        $decodedMessage = json_decode($oneMessage, true, 512, JSON_THROW_ON_ERROR);
+                                        $controlChannel->push($decodedMessage);
+                                    } catch (\JsonException $exception) {
+                                        if ($key==$count-1) {
+                                            $internalBuffer = $oneMessage;
+                                            continue;
+                                        }
+                                        throw $exception;
+                                    }
                                 }
                             } else {
                                 $controlChannel->push(json_decode($message, true, 512, JSON_THROW_ON_ERROR));
@@ -219,14 +230,20 @@ class RunSupervisorCommand extends Command
         }
         $process->setEnv($envs);
         $process->setTimeout(null);
-        Coroutine::run(function(Process $process) {
-            $process->run(function ($type, $buffer) {
-                echo $buffer;
-            });
-        }, $process);
         Coroutine::run(function() use ($controlChannel, $process) {
             while (true) {
-                $message = $controlChannel->pop();
+                if ($process->getStatus()!=='started') {
+                    Coroutine::run(function(Process $process) {
+                        $process->run(function ($type, $buffer) {
+                            echo $buffer;
+                        });
+                    }, $process);
+                }
+                try {
+                    $message = $controlChannel->pop(5000);
+                } catch (\Throwable $exception) {
+                    continue;
+                }
                 if ($message['command'] === 'stop') {
                     $process->stop();
                     break;

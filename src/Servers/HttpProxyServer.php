@@ -24,6 +24,7 @@ class HttpProxyServer
     public SupervisorConfig $supervisorConfig;
 
     private int $lastCalledWorker = 0;
+    private int $currentQueriesCount = 0;
 
     protected function createServer(): Server
     {
@@ -172,28 +173,20 @@ class HttpProxyServer
         $server = $this->createServer();
         $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
         $registry->registerCounter('system_php', 'http_proxy_queries_counter', 'Http queries on http proxy counter');
-        $currentQueriesCount = 0;
-        while (true) {
-            try {
-                $connection = null;
-                $connection = $server->acceptConnection();
-                if ($currentQueriesCount+1>100) {
-                    Coroutine::run(function (ServerConnection $connection) use ($workerManager) {
-                        $response = new \GuzzleHttp\Psr7\Response(503, [], json_encode(['msg' => 'Too many queries. Relax, get a tea and try again later']));
-                        $connection->sendHttpResponse($response);
-                        $connection->close();
-                        echo json_encode(['msg' => 'Too many queries. Relax, get a tea and try again later']) . PHP_EOL;
-                    }, $connection);
-                    continue;
-                }
-                $currentQueriesCount++;
-                Coroutine::run(function() {
-                    $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
-                    $registry->getCounter('system_php', 'http_proxy_queries_counter')->inc();
-                });
-                // now lets resend this psr7 request to worker via guzzle
-                Coroutine::run(function (ServerConnection $connection) use ($workerManager, &$currentQueriesCount) {
+        $connectionsChannel = new Channel();
+
+        Coroutine::run(function(Channel $channel, WorkerManager $workerManager) {
+            while(true) {
+                /** @var ServerConnection $connection */
+                $connection = $channel->pop();
+
+                Coroutine::run(function (ServerConnection $connection, WorkerManager $workerManager) {
+                    $this->currentQueriesCount++;
                     $request = $connection->recvHttpRequest();
+                    Coroutine::run(function() {
+                        $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
+                        $registry->getCounter('system_php', 'http_proxy_queries_counter')->inc();
+                    });
                     if ($this->supervisorConfig->devMode) {
                         $workerNumber = $this->createOneTimeWorker($workerManager);
                         $this->checkIfWorkerIsReady($workerNumber);
@@ -220,6 +213,7 @@ class HttpProxyServer
                                 'timeout' => ($this->supervisorConfig->devMode) ? 300 : 60,
                             ]);
                         }
+                        unset($client);
                     } catch (\Throwable $e) {
                         if (!method_exists($e, 'getResponse')) {
                             $response = new \GuzzleHttp\Psr7\Response(500, [], json_encode(['msg' => 'Http server error: ' . $e->getMessage()]));
@@ -229,9 +223,15 @@ class HttpProxyServer
                             $response = $e->getResponse();
                         }
                     }
+                    if (is_null($response)) {
+                        $response = new \GuzzleHttp\Psr7\Response(500, [], json_encode(['msg' => 'Http server side error: response was not correctly formed.']));
+                        ContainerStorage::getMainContainer()->get(CollectorRegistry::class)
+                            ->getOrRegisterCounter('system_php', 'http_proxy_critical_no_response', 'http_proxy_critical_no_response')
+                            ->inc();
+                    }
                     $connection->sendHttpResponse($response);
                     $connection->close();
-                    $currentQueriesCount--;
+                    $this->currentQueriesCount--;
                     $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
                     $registry->getOrRegisterGauge('system_php', 'http_proxy_memory_peak_usage_gauge', 'http_proxy_memory_peak_usage_gauge')
                         ->set(memory_get_peak_usage(true) / 1024 / 1024);
@@ -244,10 +244,36 @@ class HttpProxyServer
                         ->set($cpuAvg[1], ['5min']);
                     $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
                         ->set($cpuAvg[2], ['15min']);
-                }, $connection);
-            } catch (\Exception $exception) {
-                echo json_encode(['msg' => 'Http server error: ' . $exception->getMessage()]) . PHP_EOL;
+                }, $connection, $workerManager);
             }
+        }, $connectionsChannel, $workerManager);
+
+        while (true) {
+            while (true) {
+                try {
+                    $connection = $server->acceptConnection(1000);
+                } catch (SocketException $e) {
+                    if ($e->getCode() === -110) {
+                        continue;
+                    }
+                    throw $e;
+                }
+                break;
+            }
+
+            if ($this->currentQueriesCount+1>100) {
+                Coroutine::run(function (ServerConnection $connection) use ($workerManager) {
+                    $response = new \GuzzleHttp\Psr7\Response(503, [], json_encode(['msg' => 'Too many queries. Relax, get a tea and try again later']));
+                    $connection->sendHttpResponse($response);
+                    $connection->close();
+                    ContainerStorage::getMainContainer()->get(CollectorRegistry::class)
+                        ->getCounter('system_php', 'http_proxy_critical_tea_503')
+                        ->inc();
+                    echo json_encode(['msg' => 'Too many queries. Relax, get a tea and try again later']) . PHP_EOL;
+                }, $connection);
+                continue;
+            }
+            $connectionsChannel->push($connection);
         }
         return true;
     }
