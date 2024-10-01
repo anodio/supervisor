@@ -170,6 +170,15 @@ class HttpProxyServer
             }
         }
         $this->runControl();
+        Coroutine::run(function(int $gcHttpProxyEveryMinutes) {
+            if ($gcHttpProxyEveryMinutes<=0) {
+                return;
+            }
+            while(true) {
+                sleep($gcHttpProxyEveryMinutes*60);
+                gc_collect_cycles();
+            }
+        }, $this->supervisorConfig->gcHttpProxyEveryMinutes);
         $server = $this->createServer();
         $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
         $registry->registerCounter('system_php', 'http_proxy_queries_counter', 'Http queries on http proxy counter');

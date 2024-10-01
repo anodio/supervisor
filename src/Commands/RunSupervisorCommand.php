@@ -60,6 +60,15 @@ class RunSupervisorCommand extends Command
         }
         $supervisorControlChannel = $this->runSupervisorControlServer();
         $this->runSupervisorMetricsServer();
+        Coroutine::run(function(int $gcSupervisorEveryMinutes) {
+            if ($gcSupervisorEveryMinutes<=0) {
+                return;
+            }
+            while (true) {
+                sleep($gcSupervisorEveryMinutes*60);
+                gc_collect_cycles();
+            }
+        }, $this->supervisorConfig->gcSupervisorEveryMinutes);
 
         if (!$this->supervisorConfig->devMode) {
             $workerManager = new WorkerManager();

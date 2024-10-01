@@ -27,4 +27,10 @@ class SupervisorConfig extends AbstractConfig
 
     #[Env('MAX_MEMORY', 128)]
     public int $maxMemory;
+
+    #[Env('SUPERVISOR_GC_EVERY_MINUTES', 1)]
+    public int $gcSupervisorEveryMinutes;
+
+    #[Env('HTTP_PROXY_GC_EVERY_MINUTES', 1)]
+    public int $gcHttpProxyEveryMinutes;
 }
