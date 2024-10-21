@@ -25,7 +25,7 @@ class SupervisorConfig extends AbstractConfig
     #[Env('WORKER_COUNT', 1)]
     public int $workerCount;
 
-    #[Env('MAX_MEMORY', 128)]
+    #[Env('WORKER_MAX_MEMORY', 100)]
     public int $maxMemory;
 
     #[Env('SUPERVISOR_GC_EVERY_MINUTES', 1)]

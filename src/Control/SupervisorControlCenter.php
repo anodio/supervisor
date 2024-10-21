@@ -2,10 +2,12 @@
 
 namespace Anodio\Supervisor\Control;
 
+use Anodio\Core\ContainerStorage;
 use Anodio\Core\Helpers\Log;
 use Anodio\Supervisor\Configs\SupervisorConfig;
 use Anodio\Supervisor\Interfaces\WorkerLockerInterface;
 use Anodio\Supervisor\WorkerManagement\WorkerManager;
+use Prometheus\CollectorRegistry;
 use Prometheus\Storage\InMemory;
 use Swow\Channel;
 use Swow\Coroutine;
@@ -82,13 +84,16 @@ class SupervisorControlCenter
             $memory = $message['stats']['memory']/1024/1024; //mb
             if ($memory > $this->config->maxMemory) {
                 $this->workerLocker->lockWorker($message['workerNumber']);
-                //worker is locked. After that we will 5 seconds and restart this worker.
-                Coroutine::run(function(int $workerNumber) {
+                echo json_encode(['message' => 'Worker '.$message['workerNumber'].' is locked because of memory limit exceeded.']);
+                $collectorRegistry = ContainerStorage::getContainer()->get(CollectorRegistry::class);
+                //worker is locked. After that we will wait 5 seconds and restart this worker.
+                Coroutine::run(function(int $workerNumber, CollectorRegistry $collectorRegistry) {
                         sleep(5);
+                        $collectorRegistry->getOrRegisterCounter('system_php', 'supervisor_restarted_worker_by_memory', 'Count of worker restarts because of memory limit exceeded');
                         $this->workerManager->restartWorker($workerNumber);
                         sleep(2);
                         $this->workerLocker->unlockWorker($workerNumber);
-                    }, $message['workerNumber']);
+                    }, $message['workerNumber'], $collectorRegistry);
             }
         }
 
