@@ -45,23 +45,14 @@ class WorkerManager
 
     public function startWorkerControl(int $workerNumber, string $workerCommand): Channel {
         $controlChannel = new Channel();
-        $process = Process::fromShellCommandline($workerCommand);
-        $process->setEnv([
-            'DEV_MODE' => 'false',
-            'WORKER_NUMBER' => $workerNumber,
-            'CONTAINER_NAME' => 'worker'.$workerNumber,
-        ]);
-        $process->setTimeout(null);
-
-        Coroutine::run(function() use ($process, $controlChannel) {
+        Coroutine::run(function() use ($controlChannel, $workerCommand, $workerNumber) {
+            $process = $this->createNewProcess($workerCommand, $workerNumber);
+            Coroutine::run(function() use (&$process) {
+                $process->run(function ($type, $buffer) {
+                    echo $buffer;
+                });
+            });
             while (true) {
-                if (!$process->isRunning()) {
-                    Coroutine::run(function(Process $process) {
-                        $process->run(function ($type, $buffer) {
-                            echo $buffer;
-                        });
-                    }, $process);
-                }
                 try {
                     $message = $controlChannel->pop(100000);
                 } catch (\Swow\ChannelException $e) {
@@ -71,22 +62,52 @@ class WorkerManager
                 }
                 if (!is_null($message)) {
                     if ($message['command'] === 'restart') {
-                        $process->stop();
-                        Coroutine::run(function(Process $process) {
-                            $process->run(function ($type, $buffer) {
-                                echo $buffer;
+                        try {
+                            $pid = $process->getPid();
+                            $process->stop();
+                        } catch (\Throwable $e) {
+
+                        } finally {
+                            $process = $this->createNewProcess($workerCommand, $workerNumber);
+                            Coroutine::run(function() use (&$process) {
+                                $process->run(function ($type, $buffer) {
+                                    echo $buffer;
+                                });
                             });
-                        }, $process);
+                        }
                         continue;
                     }
                     if ($message['command'] === 'stop') {
-                        $process->stop();
-                        break;
+                        try {
+                            $pid = $process->getPid();
+                            $process->stop();
+                        } catch (\Throwable $e) {
+
+                        } finally {
+                            return;
+                        }
                     }
                 }
             }
         });
 
         return $controlChannel;
+    }
+
+    /**
+     * @param string $workerCommand
+     * @param int $workerNumber
+     * @return Process
+     */
+    public function createNewProcess(string $workerCommand, int $workerNumber): Process
+    {
+        $process = Process::fromShellCommandline($workerCommand);
+        $process->setEnv([
+            'DEV_MODE' => 'false',
+            'WORKER_NUMBER' => $workerNumber,
+            'CONTAINER_NAME' => 'worker' . $workerNumber,
+        ]);
+        $process->setTimeout(null);
+        return $process;
     }
 }

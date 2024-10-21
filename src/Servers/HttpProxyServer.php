@@ -46,7 +46,6 @@ class HttpProxyServer
             $server->bind('0.0.0.0', 7080)->listen();
             while (true) {
                 $connection = $server->accept();
-                echo "No.{$connection->getFd()} established" . PHP_EOL;
                 $buffer = new Buffer(Buffer::COMMON_SIZE);
                 try {
                     while (true) {
@@ -84,24 +83,6 @@ class HttpProxyServer
 
     private function runControl()
     {
-//        Coroutine::run(function() {
-//           $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
-//           ContainerStorage::setContainer(ContainerStorage::getMainContainer());
-//           while(true) {
-//               $registry->getOrRegisterGauge('system_php', 'http_proxy_memory_peak_usage_gauge', 'http_proxy_memory_peak_usage_gauge')
-//                   ->set(memory_get_peak_usage(true) / 1024 / 1024);
-//               $registry->getOrRegisterGauge('system_php', 'http_proxy_memory_usage_gauge', 'http_proxy_memory_usage_gauge')
-//                   ->set(memory_get_usage(true) / 1024 / 1024);
-//               $cpuAvg = sys_getloadavg();
-//               $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
-//                   ->set($cpuAvg[0], ['1min']);
-//                $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
-//                    ->set($cpuAvg[1], ['5min']);
-//                $registry->getOrRegisterGauge('system_php', 'http_proxy_cpu_usage_gauge', 'http_proxy_cpu_usage_gauge', ['per'])
-//                    ->set($cpuAvg[2], ['15min']);
-//               sleep(15);
-//           }
-//        });
         Coroutine::run(function () {
             $channel = $this->createControlTCPServer();
             while (true) {

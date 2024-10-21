@@ -84,7 +84,7 @@ class SupervisorControlCenter
             $memory = $message['stats']['memory']/1024/1024; //mb
             if ($memory > $this->config->maxMemory) {
                 $this->workerLocker->lockWorker($message['workerNumber']);
-                echo json_encode(['message' => 'Worker '.$message['workerNumber'].' is locked because of memory limit exceeded.']);
+                echo json_encode(['message' => 'Worker '.$message['workerNumber'].' is locked because of memory limit exceeded.'])."\n";
                 $collectorRegistry = ContainerStorage::getContainer()->get(CollectorRegistry::class);
                 //worker is locked. After that we will wait 5 seconds and restart this worker.
                 Coroutine::run(function(int $workerNumber, CollectorRegistry $collectorRegistry) {
