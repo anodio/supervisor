@@ -194,7 +194,8 @@ class HttpProxyServer
                     $request = $connection->recvHttpRequest();
                     Coroutine::run(function() {
                         $registry = ContainerStorage::getMainContainer()->get(CollectorRegistry::class);
-                        $registry->getCounter('system_php', 'http_proxy_queries_counter')->inc();
+                        $registry->getOrRegisterCounter('system_php', 'http_proxy_queries_counter', 'Http queries on http proxy counter')
+                            ->inc();
                     });
                     if ($this->supervisorConfig->devMode) {
                         $workerNumber = $this->createOneTimeWorker($workerManager);
@@ -270,13 +271,13 @@ class HttpProxyServer
                 break;
             }
 
-            if ($this->currentQueriesCount+1>100) {
+            if ($this->currentQueriesCount+1>$this->supervisorConfig->httpProxyMaxQueries) {
                 Coroutine::run(function (ServerConnection $connection) use ($workerManager) {
                     $response = new \GuzzleHttp\Psr7\Response(503, [], json_encode(['msg' => 'Too many queries. Relax, get a tea and try again later']));
                     $connection->sendHttpResponse($response);
                     $connection->close();
                     ContainerStorage::getMainContainer()->get(CollectorRegistry::class)
-                        ->getCounter('system_php', 'http_proxy_critical_tea_503')
+                        ->getOrRegisterCounter('system_php', 'http_proxy_critical_tea_503', 'too much requests metric')
                         ->inc();
                     echo json_encode(['msg' => 'Too many queries. Relax, get a tea and try again later']) . PHP_EOL;
                 }, $connection);

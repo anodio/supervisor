@@ -33,4 +33,7 @@ class SupervisorConfig extends AbstractConfig
 
     #[Env('HTTP_PROXY_GC_EVERY_MINUTES', 1)]
     public int $gcHttpProxyEveryMinutes;
+
+    #[Env('HTTP_PROXY_MAX_QUERIES', 200)]
+    public int $httpProxyMaxQueries = 200;
 }
