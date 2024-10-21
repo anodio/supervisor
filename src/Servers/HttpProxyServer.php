@@ -18,7 +18,7 @@ use Swow\SocketException;
 
 class HttpProxyServer
 {
-    private ?\SplFixedArray $pool = null;
+    private ?array $pool = null;
 
     #[Inject]
     public SupervisorConfig $supervisorConfig;
@@ -149,7 +149,7 @@ class HttpProxyServer
 
     public function run(): bool
     {
-        $this->pool = new \SplFixedArray($this->supervisorConfig->workerCount);
+        $this->pool = [];
 
         if ($this->supervisorConfig->devMode) {
             $startWorkerCount = 0;
